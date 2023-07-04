@@ -44,6 +44,7 @@ def _sample_posterior(
         Indexes of the variables to exclude when computing predictions
     """
     stacked_trees = all_trees
+
     if isinstance(X, Variable):
         X = X.eval()
 
@@ -60,13 +61,18 @@ def _sample_posterior(
 
     idx = rng.integers(0, len(stacked_trees), size=flatten_size)
 
-    pred = np.zeros((flatten_size, X.shape[0], shape))
+    st_shape = len(stacked_trees[0])
+    tree_shape = shape // st_shape
+
+    pred = np.zeros((flatten_size, st_shape, tree_shape, X.shape[0]))
 
     for ind, p in enumerate(pred):
-        for tree in stacked_trees[idx[ind]]:
-            p += tree.predict(x=X, excluded=excluded, shape=shape).T
-    pred.reshape((*size_iter, shape, -1))
-    return pred
+        for oi, odim_trees in enumerate(stacked_trees[idx[ind]]):
+            for tree in odim_trees:
+                p[oi] += tree.predict(x=X, excluded=excluded, shape=tree_shape)
+
+    # pred.reshape((*size_iter, shape, -1))
+    return pred.transpose((0, 3, 1, 2)).reshape((*size_iter, -1, shape))
 
 
 def plot_convergence(

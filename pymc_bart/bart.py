@@ -39,7 +39,7 @@ class BARTRV(RandomVariable):
     ndims_params: List[int] = [2, 1, 0, 0, 0, 1]
     dtype: str = "floatX"
     _print_name: Tuple[str, str] = ("BART", "\\operatorname{BART}")
-    all_trees = List[List[Tree]]
+    all_trees = List[List[List[Tree]]]
 
     def _supp_shape_from_params(self, dist_params, rep_param_idx=1, param_shapes=None):
         return dist_params[0].shape[:1]
@@ -91,6 +91,15 @@ class BART(Distribution):
         Each element of split_prior should be in the [0, 1] interval and the elements should sum to
         1. Otherwise they will be normalized.
         Defaults to 0, i.e. all covariates have the same prior probability to be selected.
+    shape: : Optional[Tuple], default None
+        Specify the output shape. If shape is different from (len(X)) (the default), train a
+        separate tree for each value in other dimensions.
+    separate_trees : Optional[bool], default False
+        When training multiple trees (by setting a shape parameter), the default behavior is to
+        learn a joint tree structure and only have different leaf values for each.
+        This flag forces a fully separate tree structure to be trained instead.
+        This is unnecessary in many cases and is considerably slower, multiplying
+        run-time roughly by number of dimensions.
 
     Notes
     -----
@@ -109,6 +118,7 @@ class BART(Distribution):
         beta: float = 2.0,
         response: str = "constant",
         split_prior: Optional[List[float]] = None,
+        separate_trees: Optional[bool] = False,
         **kwargs,
     ):
         manager = Manager()
@@ -134,6 +144,7 @@ class BART(Distribution):
                 alpha=alpha,
                 beta=beta,
                 split_prior=split_prior,
+                separate_trees=separate_trees,
             ),
         )()
 

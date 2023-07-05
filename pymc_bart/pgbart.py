@@ -12,15 +12,17 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Callable
 import numpy.typing as npt
 import numpy as np
+import pytensor.tensor as pt
+
 from numba import njit
 from pymc.model import Model, modelcontext
 from pymc.pytensorf import inputvars, join_nonshared_inputs, make_shared_replacements
 from pymc.step_methods.arraystep import ArrayStepShared
 from pymc.step_methods.compound import Competence
-from pytensor import config
+from pytensor import config, clone_replace
 from pytensor import function as pytensor_function
 from pytensor.tensor.var import Variable
 
@@ -29,6 +31,8 @@ from pymc_bart.tree import Node, Tree, get_idx_left_child, get_idx_right_child, 
 from pymc_bart.split_rules import ContinuousSplitRule
 
 from pymc_bart.bartmean import PGBART_means
+from pymc.pytensorf import compile_pymc
+
 
 
 class ParticleTree:
@@ -202,6 +206,8 @@ class PGBART(ArrayStepShared):
         self.indices = list(range(1, num_particles))
         shared = make_shared_replacements(initial_values, vars, model)
 
+        self.sd = compile_sd(initial_values, self.bart.sd, vars, shared)
+
         self.likelihood_logp = logp(initial_values, [model.datalogp], vars, shared)
         self.all_particles = [
             [ParticleTree(self.a_tree) for _ in range(self.m)] for _ in range(self.trees_shape)
@@ -222,7 +228,8 @@ class PGBART(ArrayStepShared):
         tree_ids = range(self.lower, upper)
         self.lower = upper if upper < self.m else 0
 
-        sd = np.exp(self.shared['bart_sd_log__'].get_value())
+        #sd = np.exp(self.shared['bart_sd_log__'].get_value())
+        sd = self.sd()
         #print("SD",sd)
         self.leaf_sd = np.full((self.trees_shape, self.leaves_shape),sd/self.m**0.5)
 
@@ -720,3 +727,15 @@ def logp(point, out_vars, vars, shared):  # pylint: disable=redefined-builtin
     function = pytensor_function([inarray0], out_list[0])
     function.trust_input = True
     return function
+
+
+def compile_sd(
+    point: Dict[str, np.ndarray],
+    sd: pt.TensorVariable,
+    vars: List[pt.TensorVariable],
+    shared: Dict[pt.TensorVariable, pt.sharedvar.TensorSharedVariable],
+) -> pytensor.compile.Function:
+    sd0 = clone_replace(sd, shared, rebuild_strict=False)
+    f = compile_pymc([], sd0)
+    f.trust_input = True
+    return f

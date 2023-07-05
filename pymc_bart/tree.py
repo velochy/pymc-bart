@@ -31,26 +31,33 @@ class Node:
     linear_params: Optional[List[float]] = None
     """
 
-    __slots__ = "value", "nvalue", "idx_split_variable", "idx_data_points", "linear_params"
+    __slots__ = "value", "nvalue", "idx_split_variable", "idx_data_points", "linear_params", "mean"
 
     def __init__(
         self,
         value: npt.NDArray[np.float_] = np.array([-1.0]),
+        mean: Optional[npt.NDArray[np.float_]] = None,
         nvalue: int = 0,
         idx_data_points: Optional[npt.NDArray[np.int_]] = None,
         idx_split_variable: int = -1,
         linear_params: Optional[List[float]] = None,
     ) -> None:
         self.value = value
+        self.mean = mean
         self.nvalue = nvalue
         self.idx_data_points = idx_data_points
         self.idx_split_variable = idx_split_variable
         self.linear_params = linear_params
 
+        #if self.is_leaf_node():
+        #    print("M",mean,value)
+
+
     @classmethod
     def new_leaf_node(
         cls,
         value: npt.NDArray[np.float_],
+        mean: Optional[npt.NDArray[np.float_]] = None,
         nvalue: int = 0,
         idx_data_points: Optional[npt.NDArray[np.int_]] = None,
         idx_split_variable: int = -1,
@@ -58,6 +65,7 @@ class Node:
     ) -> "Node":
         return cls(
             value=value,
+            mean=mean,
             nvalue=nvalue,
             idx_data_points=idx_data_points,
             idx_split_variable=idx_split_variable,
@@ -141,6 +149,7 @@ class Tree:
             tree_structure={
                 0: Node.new_leaf_node(
                     value=leaf_node_value,
+                    mean=leaf_node_value,
                     nvalue=len(idx_data_points) if idx_data_points is not None else 0,
                     idx_data_points=idx_data_points,
                 )
@@ -160,6 +169,7 @@ class Tree:
         tree: Dict[int, Node] = {
             k: Node(
                 value=v.value,
+                mean=v.mean,
                 nvalue=v.nvalue,
                 idx_data_points=v.idx_data_points,
                 idx_split_variable=v.idx_split_variable,
@@ -218,6 +228,15 @@ class Tree:
         for node in self.tree_structure.values():
             if node.is_split_node():
                 yield node.idx_split_variable
+
+
+    def _predict_means(self) -> npt.NDArray[np.float_]:
+        output = self.output
+        if self.idx_leaf_nodes is not None:
+            for node_index in self.idx_leaf_nodes:
+                leaf_node = self.get_node(node_index)
+                output[leaf_node.idx_data_points] = leaf_node.mean
+        return output.T
 
     def _predict(self) -> npt.NDArray[np.float_]:
         output = self.output

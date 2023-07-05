@@ -28,6 +28,7 @@ from pytensor.tensor.random.op import RandomVariable
 from .tree import Tree
 from .utils import TensorLike, _sample_posterior
 from .split_rules import SplitRule
+from .bartmean import BARTMean
 
 __all__ = ["BART"]
 
@@ -47,13 +48,13 @@ class BARTRV(RandomVariable):
 
     @classmethod
     def rng_fn(
-        cls, rng=None, X=None, Y=None, m=None, alpha=None, beta=None, split_prior=None, size=None
+        cls, rng=None, X=None, pred_means=None, sd=None, m=None, alpha=None, beta=None, split_prior=None, Y=None, size=None
     ):
         if not cls.all_trees:
             if size is not None:
-                return np.full((size[0], cls.Y.shape[0]), cls.Y.mean())
+                return np.full((size[0], cls.Y.shape[0]), cls.initial_mean)
             else:
-                return np.full(cls.Y.shape[0], cls.Y.mean())
+                return np.full(cls.Y.shape[0], cls.initial_mean)
         else:
             if size is not None:
                 shape = size[0]
@@ -62,7 +63,8 @@ class BARTRV(RandomVariable):
             return _sample_posterior(cls.all_trees, cls.X, rng=rng, shape=shape).squeeze().T
 
 
-bart = BARTRV()
+
+#bart = BARTRV() # Does not seem necessary any more
 
 
 class BART(Distribution):
@@ -117,7 +119,6 @@ class BART(Distribution):
         cls,
         name: str,
         X: TensorLike,
-        Y: TensorLike,
         m: int = 50,
         alpha: float = 0.95,
         beta: float = 2.0,
@@ -125,15 +126,37 @@ class BART(Distribution):
         split_prior: Optional[List[float]] = None,
         split_rules: Optional[SplitRule] = None,
         separate_trees: Optional[bool] = False,
+        Y: Optional[TensorLike] = None,
+        initial_mean: Optional[float] = None,
+        sd: Optional[TensorLike] = None,
         **kwargs,
     ):
         manager = Manager()
         cls.all_trees = manager.list()
 
-        X, Y = preprocess_xy(X, Y)
+        X = preprocess_tensor(X)
+
+        if Y is not None:
+            Y = preprocess_tensor(Y)
+        elif initial_mean is None or sd is None:
+            raise Exception('Either Y or both sd and initial_mean need to be specified')
+
+        if initial_mean is None:
+            initial_mean = Y.mean()
+
+        if sd is None:
+            y_unique = np.unique(Y)
+            is_bernoulli = (y_unique.size == 2 and np.all(y_unique == [0, 1]))
+            sd = 3 if is_bernoulli else Y.std()
 
         if split_prior is None:
             split_prior = []
+
+        out_shape = kwargs['shape'] if 'shape' in kwargs else len(X)
+
+        pred_means = BARTMean(f'BM_{name}',shape=out_shape)
+        #from pymc import Uniform
+        #pred_means = Uniform(f'BM_{name}',0.0,1e-5,shape=out_shape)
 
         bart_op = type(
             f"BART_{name}",
@@ -142,9 +165,8 @@ class BART(Distribution):
                 name="BART",
                 all_trees=cls.all_trees,
                 inplace=False,
-                initval=Y.mean(),
+                initial_mean=initial_mean,
                 X=X,
-                Y=Y,
                 m=m,
                 response=response,
                 alpha=alpha,
@@ -152,6 +174,9 @@ class BART(Distribution):
                 split_prior=split_prior,
                 split_rules=split_rules,
                 separate_trees=separate_trees,
+                sd=sd,
+                pred_means=pred_means,
+                Y=Y
             ),
         )()
 
@@ -162,14 +187,15 @@ class BART(Distribution):
             return cls.get_moment(rv, size, *rv_inputs)
 
         cls.rv_op = bart_op
-        params = [X, Y, m, alpha, beta, split_prior]
+        params = [X, pred_means, sd, m, alpha, beta, split_prior, Y]
+        print("PARAMS",params)
         return super().__new__(cls, name, *params, **kwargs)
 
     @classmethod
     def dist(cls, *params, **kwargs):
         return super().dist(params, **kwargs)
 
-    def logp(self, x, *inputs):
+    def logp(value, X, mu, sigma, *inputs):
         """Calculate log probability.
 
         Parameters
@@ -181,26 +207,23 @@ class BART(Distribution):
         -------
         TensorVariable
         """
-        return pt.zeros_like(x)
+        # Normal distribution 
+        return -0.5 * pt.pow((value-mu) / sigma, 2) - pt.log(pt.sqrt(2.0 * np.pi)) - pt.log(sigma)
+        #return pt.ones_like(value)
 
     @classmethod
     def get_moment(cls, rv, size, *rv_inputs):
-        mean = pt.fill(size, rv.Y.mean())
+        mean = pt.fill(size, rv.initial_mean)
         return mean
 
 
-def preprocess_xy(
-    X: TensorLike, Y: TensorLike
-) -> Tuple[npt.NDArray[np.float_], npt.NDArray[np.float_]]:
-    if isinstance(Y, (Series, DataFrame)):
-        Y = Y.to_numpy()
+def preprocess_tensor(
+    X: TensorLike
+) -> npt.NDArray[np.float_]:
     if isinstance(X, (Series, DataFrame)):
         X = X.to_numpy()
-
-    Y = Y.astype(float)
     X = X.astype(float)
-
-    return X, Y
+    return X
 
 
 @_logprob.register(BARTRV)

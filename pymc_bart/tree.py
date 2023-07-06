@@ -149,7 +149,7 @@ class Tree:
             tree_structure={
                 0: Node.new_leaf_node(
                     value=leaf_node_value,
-                    mean=leaf_node_value,
+                    mean=np.zeros_like(leaf_node_value),
                     nvalue=len(idx_data_points) if idx_data_points is not None else 0,
                     idx_data_points=idx_data_points,
                 )

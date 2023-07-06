@@ -224,7 +224,7 @@ class PGBART(ArrayStepShared):
 
         # sd = self.sd() # always samples from initial distribution for some reason
         sd = np.exp(self.shared['bart_sd_log__'].get_value())
-        #print("SD",sd)
+        print("SD",sd)
         self.leaf_sd = np.full((self.trees_shape, self.leaves_shape),sd/self.m**0.5)
 
         for odim in range(self.trees_shape):
@@ -464,7 +464,7 @@ def compute_prior_probability(alpha: int, beta: int) -> List[float]:
     return prior_leaf_prob
 
 def calculate_leaf_values(sum_trees,leaf_sd,m):
-    return sum_trees[0]# + (leaf_sd[:,None]*(m**0.5))*sum_trees[1]
+    return sum_trees[0] + (leaf_sd[:,None]*(m**0.5))*sum_trees[1]
 
 def grow_tree(
     tree,
@@ -513,7 +513,7 @@ def grow_tree(
             y_mu_pred=calculate_leaf_values(sum_trees[:,:, idx_data_point],leaf_sd,m),
             x_mu=X[idx_data_point, selected_predictor],
             m=m,
-            norm=normal.rvs()*leaf_sd,
+            norm=normal.rvs(),#*leaf_sd,
             shape=shape,
             response=response,
         )
@@ -562,8 +562,9 @@ def draw_leaf_value(
         if response == "linear":
             mu_mean, linear_params = fast_linear_fit(x=x_mu, y=y_mu_pred, m=m)
 
-    draw = mu_mean + norm
-    return draw, mu_mean, linear_params
+    #draw = mu_mean + norm
+    #return draw, mu_mean, linear_params
+    return mu_mean, norm, linear_params
 
 
 @njit

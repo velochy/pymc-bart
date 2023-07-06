@@ -186,7 +186,8 @@ class BART(Distribution):
 
         cls.rv_op = bart_op
         params = [X, sd, m, alpha, beta, split_prior, Y]
-        return super().__new__(cls, name, *params, **kwargs)[:,0]
+        bvar = super().__new__(cls, name, *params, **kwargs)
+        return bvar[:,0] + sd*bvar[:,1]
 
     @classmethod
     def dist(cls, *params, **kwargs):
@@ -206,8 +207,8 @@ class BART(Distribution):
         """
         
         # Normal distribution 
-        return -0.5 * pt.pow((value[:,1,:]-value[:,0,:]) / sigma, 2) - pt.log(pt.sqrt(2.0 * np.pi)) - pt.log(sigma)
-        #return -0.5 * pt.pow(value[:,1,:], 2) - pt.log(pt.sqrt(2.0 * np.pi)) # Unit normal
+        #return -0.5 * pt.pow((value[:,1,:]-value[:,0,:]) / sigma, 2) - pt.log(pt.sqrt(2.0 * np.pi)) - pt.log(sigma)
+        return -0.5 * pt.pow(value[:,1,:], 2) - pt.log(pt.sqrt(2.0 * np.pi)) # Unit normal
         #return pt.zeros_like(value)
 
     @classmethod

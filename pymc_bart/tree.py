@@ -155,7 +155,7 @@ class Tree:
                 )
             },
             idx_leaf_nodes=[0],
-            output=np.zeros((num_observations, shape)).astype(config.floatX),
+            output=np.zeros((2,num_observations, shape)).astype(config.floatX),
             split_rules=split_rules,
         )
 
@@ -229,23 +229,15 @@ class Tree:
             if node.is_split_node():
                 yield node.idx_split_variable
 
-
-    def _predict_means(self) -> npt.NDArray[np.float_]:
-        output = self.output
-        if self.idx_leaf_nodes is not None:
-            for node_index in self.idx_leaf_nodes:
-                leaf_node = self.get_node(node_index)
-                output[leaf_node.idx_data_points] = leaf_node.mean
-        return output.T
-
     def _predict(self) -> npt.NDArray[np.float_]:
         output = self.output
 
         if self.idx_leaf_nodes is not None:
             for node_index in self.idx_leaf_nodes:
                 leaf_node = self.get_node(node_index)
-                output[leaf_node.idx_data_points] = leaf_node.value
-        return output.T
+                output[0,leaf_node.idx_data_points] = leaf_node.value
+                output[1,leaf_node.idx_data_points] = leaf_node.mean
+        return output.transpose(0,2,1)
 
     def predict(
         self,

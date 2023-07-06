@@ -28,10 +28,8 @@ from pytensor.tensor.random.op import RandomVariable
 from .tree import Tree
 from .utils import TensorLike, _sample_posterior
 from .split_rules import SplitRule
-from .bartmean import BARTMean
 
 __all__ = ["BART"]
-
 
 class BARTRV(RandomVariable):
     """Base class for BART."""
@@ -44,23 +42,25 @@ class BARTRV(RandomVariable):
     all_trees = List[List[List[Tree]]]
 
     def _supp_shape_from_params(self, dist_params, rep_param_idx=1, param_shapes=None):
-        return dist_params[0].shape[:1]
+        return (2,)+dist_params[0].eval().shape[:1]
 
     @classmethod
     def rng_fn(
-        cls, rng=None, X=None, pred_means=None, sd=None, m=None, alpha=None, beta=None, split_prior=None, Y=None, size=None
+        cls, rng=None, X=None, sd=None, m=None, alpha=None, beta=None, split_prior=None, Y=None, size=None
     ):
         if not cls.all_trees:
             if size is not None:
-                return np.full((size[0], cls.Y.shape[0]), cls.initial_mean)
+                return np.full((size[0], 2, cls.Y.shape[0]), cls.initial_mean)
             else:
-                return np.full(cls.Y.shape[0], cls.initial_mean)
+                return np.full( (cls.Y.shape[0]), 2, cls.initial_mean)
         else:
             if size is not None:
                 shape = size[0]
             else:
                 shape = 1
-            return _sample_posterior(cls.all_trees, cls.X, rng=rng, shape=shape).squeeze().T
+            res = _sample_posterior(cls.all_trees, cls.X, rng=rng, shape=shape).squeeze().T[:,None,:]
+            return np.concatenate( [ res, np.zeros_like(res) ], axis=1)
+            
 
 
 
@@ -157,10 +157,6 @@ class BART(Distribution):
 
         out_shape = kwargs['shape'] if 'shape' in kwargs else len(X)
 
-        pred_means = BARTMean(f'BM_{name}',shape=out_shape)
-        #from pymc import Uniform
-        #pred_means = Uniform(f'BM_{name}',0.0,1e-5,shape=out_shape)
-
         bart_op = type(
             f"BART_{name}",
             (BARTRV,),
@@ -178,7 +174,6 @@ class BART(Distribution):
                 split_rules=split_rules,
                 separate_trees=separate_trees,
                 sd=sd,
-                pred_means=pred_means,
                 Y=Y
             ),
         )()
@@ -190,15 +185,14 @@ class BART(Distribution):
             return cls.get_moment(rv, size, *rv_inputs)
 
         cls.rv_op = bart_op
-        params = [X, pred_means, sd, m, alpha, beta, split_prior, Y]
-        print("PARAMS",params)
-        return super().__new__(cls, name, *params, **kwargs)
+        params = [X, sd, m, alpha, beta, split_prior, Y]
+        return super().__new__(cls, name, *params, **kwargs)[:,0]
 
     @classmethod
     def dist(cls, *params, **kwargs):
         return super().dist(params, **kwargs)
 
-    def logp(value, X, mu, sigma, *inputs):
+    def logp(value, X, sigma, *inputs):
         """Calculate log probability.
 
         Parameters
@@ -210,9 +204,11 @@ class BART(Distribution):
         -------
         TensorVariable
         """
+        
         # Normal distribution 
-        return -0.5 * pt.pow((value-mu) / sigma, 2) - pt.log(pt.sqrt(2.0 * np.pi)) - pt.log(sigma)
-        #return pt.ones_like(value)
+        return -0.5 * pt.pow((value[:,1,:]-value[:,0,:]) / sigma, 2) - pt.log(pt.sqrt(2.0 * np.pi)) - pt.log(sigma)
+        #return -0.5 * pt.pow(value[:,1,:], 2) - pt.log(pt.sqrt(2.0 * np.pi)) # Unit normal
+        #return pt.zeros_like(value)
 
     @classmethod
     def get_moment(cls, rv, size, *rv_inputs):

@@ -69,9 +69,7 @@ def _sample_posterior(
     for ind, p in enumerate(pred):
         for oi, odim_trees in enumerate(stacked_trees[idx[ind]]):
             for tree in odim_trees:
-                p[oi] += np.vstack(
-                    [tree.predict(x=x, excluded=excluded, shape=tree_shape) for x in X]
-                ).T
+                p[oi] += tree.predict(x=X, excluded=excluded, shape=tree_shape)
 
     # pred.reshape((*size_iter, shape, -1))
     return pred.transpose((0, 3, 1, 2)).reshape((*size_iter, -1, shape))

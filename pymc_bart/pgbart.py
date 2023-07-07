@@ -175,7 +175,7 @@ class PGBART(ArrayStepShared):
             leaf_node_value=init_mean / self.m,
             idx_data_points=np.arange(self.num_observations, dtype="int32"),
             num_observations=self.num_observations,
-            shape=self.leaves_shape
+            shape=self.leaves_shape,
         )
 
         self.normal = NormalSampler(1, self.leaves_shape)
@@ -357,7 +357,8 @@ class PGBART(ArrayStepShared):
         """
 
         delta = (
-            np.identity(self.trees_shape)[odim][:, None, None] * particle.tree._predict()[None, :, :]
+            np.identity(self.trees_shape)[odim][:, None, None]
+            * particle.tree._predict()[None, :, :]
         )
 
         new_likelihood = self.likelihood_logp((self.sum_trees_noi + delta).flatten())
